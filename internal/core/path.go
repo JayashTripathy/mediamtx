@@ -95,6 +95,7 @@ type path struct {
 	source                         defs.Source
 	stream                         *stream.Stream
 	recorder                       *recorder.Recorder
+	recordingDemand                bool
 	availableTime                  time.Time
 	onlineTime                     time.Time
 	onUnDemandHook                 func(string)
@@ -208,7 +209,11 @@ func (pa *path) run() {
 
 		if !pa.conf.SourceOnDemand {
 			pa.source.(*staticsources.Handler).Start(false, "")
+		} else if pa.conf.Record {
+			pa.startRecordingDemand()
 		}
+	} else if pa.conf.Record {
+		pa.startRecordingDemand()
 	}
 
 	onUnInitHook := hooks.OnInit(hooks.OnInitParams{
@@ -409,8 +414,14 @@ func (pa *path) doReloadConf(newConf *conf.Path) {
 		pa.recorder = nil
 	}
 
-	if newConf.Record && pa.stream != nil && pa.recorder == nil {
-		pa.startRecording()
+	if newConf.Record {
+		pa.startRecordingDemand()
+
+		if pa.stream != nil && pa.recorder == nil {
+			pa.startRecording()
+		}
+	} else {
+		pa.stopRecordingDemand()
 	}
 }
 
@@ -443,7 +454,12 @@ func (pa *path) doSourceStaticSetReady(req defs.PathSourceStaticSetReadyReq) {
 	if pa.conf.HasOnDemandStaticSource() {
 		pa.onDemandStaticSourceReadyTimer.Stop()
 		pa.onDemandStaticSourceReadyTimer = emptyTimer()
-		pa.onDemandStaticSourceScheduleClose()
+
+		if pa.recordingDemand {
+			pa.onDemandStaticSourceState = pathOnDemandStateReady
+		} else {
+			pa.onDemandStaticSourceScheduleClose()
+		}
 	}
 
 	pa.consumeOnHoldRequests()
@@ -568,7 +584,12 @@ func (pa *path) doAddPublisher(req defs.PathAddPublisherReq) {
 	if pa.conf.HasOnDemandPublisher() && pa.onDemandPublisherState != pathOnDemandStateInitial {
 		pa.onDemandPublisherReadyTimer.Stop()
 		pa.onDemandPublisherReadyTimer = emptyTimer()
-		pa.onDemandPublisherScheduleClose()
+
+		if pa.recordingDemand {
+			pa.onDemandPublisherState = pathOnDemandStateReady
+		} else {
+			pa.onDemandPublisherScheduleClose()
+		}
 	}
 
 	pa.consumeOnHoldRequests()
@@ -607,7 +628,7 @@ func (pa *path) doRemoveReader(req defs.PathRemoveReaderReq) {
 	}
 	close(req.Res)
 
-	if len(pa.readers) == 0 {
+	if len(pa.readers) == 0 && !pa.recordingDemand {
 		if pa.conf.HasOnDemandStaticSource() {
 			if pa.onDemandStaticSourceState == pathOnDemandStateReady {
 				pa.onDemandStaticSourceScheduleClose()
@@ -748,8 +769,59 @@ func (pa *path) shouldClose() bool {
 	return pa.conf.Regexp != nil &&
 		pa.source == nil &&
 		len(pa.readers) == 0 &&
+		!pa.recordingDemand &&
 		len(pa.describeRequestsOnHold) == 0 &&
 		len(pa.readerAddRequestsOnHold) == 0
+}
+
+func (pa *path) startRecordingDemand() {
+	if pa.recordingDemand || (!pa.conf.HasOnDemandStaticSource() && !pa.conf.HasOnDemandPublisher()) {
+		return
+	}
+	pa.recordingDemand = true
+
+	if pa.conf.HasOnDemandStaticSource() {
+		switch pa.onDemandStaticSourceState {
+		case pathOnDemandStateInitial:
+			pa.onDemandStaticSourceStart("")
+
+		case pathOnDemandStateClosing:
+			pa.onDemandStaticSourceState = pathOnDemandStateReady
+			pa.onDemandStaticSourceCloseTimer.Stop()
+			pa.onDemandStaticSourceCloseTimer = emptyTimer()
+		}
+	} else if pa.conf.HasOnDemandPublisher() {
+		switch pa.onDemandPublisherState {
+		case pathOnDemandStateInitial:
+			pa.onDemandPublisherStart("")
+
+		case pathOnDemandStateClosing:
+			pa.onDemandPublisherState = pathOnDemandStateReady
+			pa.onDemandPublisherCloseTimer.Stop()
+			pa.onDemandPublisherCloseTimer = emptyTimer()
+		}
+	}
+}
+
+func (pa *path) stopRecordingDemand() {
+	if !pa.recordingDemand {
+		return
+	}
+	pa.recordingDemand = false
+
+	if len(pa.readers) != 0 {
+		return
+	}
+
+	if pa.conf.HasOnDemandStaticSource() {
+		if pa.onDemandStaticSourceState == pathOnDemandStateReady {
+			pa.onDemandStaticSourceScheduleClose()
+		}
+	} else if pa.conf.HasOnDemandPublisher() {
+		if pa.onDemandPublisherState == pathOnDemandStateReady {
+			pa.onDemandPublisherScheduleClose()
+		}
+	}
 }
 
 func (pa *path) onDemandStaticSourceStart(query string) {
