@@ -148,6 +148,31 @@ func TestPathRunOnDemand(t *testing.T) {
 	}
 }
 
+func TestPathRunOnDemandRecordStartAtStartup(t *testing.T) {
+	onDemand := filepath.Join(t.TempDir(), "on_demand")
+
+	p, ok := newInstance(t, fmt.Sprintf("rtsp: no\n"+
+		"rtmp: no\n"+
+		"hls: no\n"+
+		"webrtc: no\n"+
+		"record: yes\n"+
+		"paths:\n"+
+		"  ondemand:\n"+
+		"    runOnDemand: sh -c 'touch %s; sleep 30'\n", onDemand))
+	require.Equal(t, true, ok)
+	defer p.Close()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, err := os.Stat(onDemand)
+		if err == nil {
+			break
+		}
+		require.True(t, time.Now().Before(deadline))
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 func TestPathRunOnConnect(t *testing.T) {
 	serverCertFpath := test.CreateTempFile(t, test.TLSCertPub)
 	serverKeyFpath := test.CreateTempFile(t, test.TLSCertKey)
