@@ -43,6 +43,16 @@ pathDefaults:
   # Delete segments after this timespan.
   # Set to 0s to disable automatic deletion.
   recordDeleteAfter: 1d
+  # Enable motion-based retention. Streams are still recorded continuously; motion only controls which completed segments are kept longer.
+  # Motion detection is implemented in Go and currently uses MJPEG video frames.
+  recordMotion: false
+  # Delete segments that contain detected motion after this timespan.
+  # Set to 0s to disable automatic deletion of motion segments.
+  recordMotionDeleteAfter: 3d
+  # Per-pixel luminance difference, from 1 to 255, required to classify a pixel as changed.
+  recordMotionThreshold: 25
+  # Minimum number of changed pixels required to mark a segment as containing motion.
+  recordMotionMinimumPixels: 500
 ```
 
 All available recording parameters are listed in the [configuration file](../5-references/1-configuration-file.md).

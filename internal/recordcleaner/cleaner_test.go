@@ -104,3 +104,54 @@ func TestCleanerMultipleEntriesSamePath(t *testing.T) {
 	_, err = os.Stat(filepath.Join(dir, "path2", "2009-05-19_22-15-25-000427.mp4"))
 	require.NoError(t, err)
 }
+
+func TestCleanerMotionRetention(t *testing.T) {
+	now := time.Date(2009, 5, 20, 22, 15, 25, 0, time.Local)
+	timeNow = func() time.Time {
+		return now
+	}
+
+	dir := t.TempDir()
+
+	err := os.Mkdir(filepath.Join(dir, "path1"), 0o755)
+	require.NoError(t, err)
+
+	noMotionSegment := filepath.Join(dir, "path1", "2009-05-20_22-15-24-000000.mp4")
+	err = os.WriteFile(noMotionSegment, []byte{1}, 0o644)
+	require.NoError(t, err)
+	err = os.WriteFile(noMotionSegment+".nomotion", nil, 0o644)
+	require.NoError(t, err)
+
+	motionSegment := filepath.Join(dir, "path1", "2009-05-20_22-15-24-500000.mp4")
+	err = os.WriteFile(motionSegment, []byte{1}, 0o644)
+	require.NoError(t, err)
+	err = os.WriteFile(motionSegment+".motion", nil, 0o644)
+	require.NoError(t, err)
+
+	c := &Cleaner{
+		PathConfs: map[string]*conf.Path{
+			"path1": {
+				Name:                    "path1",
+				RecordPath:              filepath.Join(dir, "%path/%Y-%m-%d_%H-%M-%S-%f"),
+				RecordFormat:            conf.RecordFormatFMP4,
+				RecordMotion:            true,
+				RecordMotionDeleteAfter: conf.Duration(time.Hour),
+			},
+		},
+		Parent: test.NilLogger,
+	}
+	c.Initialize()
+	defer c.Close()
+
+	time.Sleep(500 * time.Millisecond)
+
+	_, err = os.Stat(noMotionSegment)
+	require.Error(t, err)
+	_, err = os.Stat(noMotionSegment + ".nomotion")
+	require.Error(t, err)
+
+	_, err = os.Stat(motionSegment)
+	require.NoError(t, err)
+	_, err = os.Stat(motionSegment + ".motion")
+	require.NoError(t, err)
+}

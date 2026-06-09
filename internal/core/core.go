@@ -78,7 +78,7 @@ func getArch() string {
 
 func atLeastOneRecordDeleteAfter(pathConfs map[string]*conf.Path) bool {
 	for _, e := range pathConfs {
-		if e.RecordDeleteAfter != 0 {
+		if e.RecordDeleteAfter != 0 || e.RecordMotion {
 			return true
 		}
 	}

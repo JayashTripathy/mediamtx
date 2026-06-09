@@ -404,7 +404,11 @@ func (pa *path) doReloadConf(newConf *conf.Path) {
 			newConf.RecordPartDuration != oldConf.RecordPartDuration ||
 			newConf.RecordMaxPartSize != oldConf.RecordMaxPartSize ||
 			newConf.RecordSegmentDuration != oldConf.RecordSegmentDuration ||
-			newConf.RecordDeleteAfter != oldConf.RecordDeleteAfter) {
+			newConf.RecordDeleteAfter != oldConf.RecordDeleteAfter ||
+			newConf.RecordMotion != oldConf.RecordMotion ||
+			newConf.RecordMotionDeleteAfter != oldConf.RecordMotionDeleteAfter ||
+			newConf.RecordMotionThreshold != oldConf.RecordMotionThreshold ||
+			newConf.RecordMotionMinimumPixels != oldConf.RecordMotionMinimumPixels) {
 		pa.recorder.Close()
 		pa.recorder = nil
 	}
@@ -911,6 +915,9 @@ func (pa *path) startRecording() {
 		PartDuration:    time.Duration(pa.conf.RecordPartDuration),
 		MaxPartSize:     pa.conf.RecordMaxPartSize,
 		SegmentDuration: time.Duration(pa.conf.RecordSegmentDuration),
+		Motion:          pa.conf.RecordMotion,
+		MotionThreshold: pa.conf.RecordMotionThreshold,
+		MotionMinPixels: pa.conf.RecordMotionMinimumPixels,
 		PathName:        pa.name,
 		Stream:          pa.stream,
 		OnSegmentCreate: func(segmentPath string) {
