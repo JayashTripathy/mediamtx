@@ -227,14 +227,18 @@ type Path struct {
 	AlwaysAvailableFile   string                 `json:"alwaysAvailableFile"`
 
 	// Record
-	Record                bool         `json:"record"`
-	Playback              *bool        `json:"playback,omitempty" deprecated:"true"`
-	RecordPath            string       `json:"recordPath"`
-	RecordFormat          RecordFormat `json:"recordFormat"`
-	RecordPartDuration    Duration     `json:"recordPartDuration"`
-	RecordMaxPartSize     StringSize   `json:"recordMaxPartSize"`
-	RecordSegmentDuration Duration     `json:"recordSegmentDuration"`
-	RecordDeleteAfter     Duration     `json:"recordDeleteAfter"`
+	Record                    bool         `json:"record"`
+	Playback                  *bool        `json:"playback,omitempty" deprecated:"true"`
+	RecordPath                string       `json:"recordPath"`
+	RecordFormat              RecordFormat `json:"recordFormat"`
+	RecordPartDuration        Duration     `json:"recordPartDuration"`
+	RecordMaxPartSize         StringSize   `json:"recordMaxPartSize"`
+	RecordSegmentDuration     Duration     `json:"recordSegmentDuration"`
+	RecordDeleteAfter         Duration     `json:"recordDeleteAfter"`
+	RecordMotion              bool         `json:"recordMotion"`
+	RecordMotionDeleteAfter   Duration     `json:"recordMotionDeleteAfter"`
+	RecordMotionThreshold     int          `json:"recordMotionThreshold"`
+	RecordMotionMinimumPixels int          `json:"recordMotionMinimumPixels"`
 
 	// Authentication (deprecated)
 	PublishUser *Credential `json:"publishUser,omitempty" deprecated:"true"`
@@ -356,6 +360,9 @@ func (pconf *Path) setDefaults() {
 	pconf.RecordMaxPartSize = 50 * 1024 * 1024
 	pconf.RecordSegmentDuration = 3600 * Duration(time.Second)
 	pconf.RecordDeleteAfter = 24 * 3600 * Duration(time.Second)
+	pconf.RecordMotionDeleteAfter = 72 * 3600 * Duration(time.Second)
+	pconf.RecordMotionThreshold = 25
+	pconf.RecordMotionMinimumPixels = 500
 
 	// Publisher source
 	pconf.OverridePublisher = true
@@ -813,6 +820,19 @@ func (pconf *Path) validate(
 
 	if pconf.RecordDeleteAfter != 0 && pconf.RecordDeleteAfter < pconf.RecordSegmentDuration {
 		return fmt.Errorf("'recordDeleteAfter' cannot be lower than 'recordSegmentDuration'")
+	}
+
+	if pconf.RecordMotion && pconf.RecordMotionDeleteAfter != 0 &&
+		pconf.RecordMotionDeleteAfter < pconf.RecordSegmentDuration {
+		return fmt.Errorf("'recordMotionDeleteAfter' cannot be lower than 'recordSegmentDuration'")
+	}
+
+	if pconf.RecordMotionThreshold <= 0 || pconf.RecordMotionThreshold > 255 {
+		return fmt.Errorf("'recordMotionThreshold' must be between 1 and 255")
+	}
+
+	if pconf.RecordMotionMinimumPixels <= 0 {
+		return fmt.Errorf("'recordMotionMinimumPixels' must be greater than zero")
 	}
 
 	// Authentication (deprecated)

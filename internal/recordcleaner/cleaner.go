@@ -11,6 +11,7 @@ import (
 
 	"github.com/bluenviron/mediamtx/internal/conf"
 	"github.com/bluenviron/mediamtx/internal/logger"
+	"github.com/bluenviron/mediamtx/internal/recorder"
 	"github.com/bluenviron/mediamtx/internal/recordstore"
 )
 
@@ -83,6 +84,13 @@ func (c *Cleaner) cleanInterval() time.Duration {
 			interval > (time.Duration(e.RecordDeleteAfter)/2) {
 			interval = time.Duration(e.RecordDeleteAfter) / 2
 		}
+		if e.RecordMotion && e.RecordMotionDeleteAfter != 0 &&
+			interval > (time.Duration(e.RecordMotionDeleteAfter)/2) {
+			interval = time.Duration(e.RecordMotionDeleteAfter) / 2
+		}
+		if e.RecordMotion && e.RecordDeleteAfter == 0 {
+			interval = time.Second
+		}
 	}
 
 	return interval
@@ -104,7 +112,7 @@ func (c *Cleaner) processPath(now time.Time, pathName string) error {
 		return err
 	}
 
-	if pathConf.RecordDeleteAfter == 0 {
+	if pathConf.RecordDeleteAfter == 0 && !pathConf.RecordMotion {
 		return nil
 	}
 
@@ -119,18 +127,48 @@ func (c *Cleaner) processPath(now time.Time, pathName string) error {
 }
 
 func (c *Cleaner) deleteExpiredSegments(now time.Time, pathName string, pathConf *conf.Path) error {
-	end := now.Add(-time.Duration(pathConf.RecordDeleteAfter))
+	end := now
+	if !pathConf.RecordMotion && pathConf.RecordDeleteAfter != 0 {
+		end = now.Add(-time.Duration(pathConf.RecordDeleteAfter))
+	}
+
 	segments, err := recordstore.FindSegments(pathConf, pathName, nil, &end)
 	if err != nil {
 		return err
 	}
 
 	for _, seg := range segments {
+		if !c.shouldDeleteSegment(now, pathConf, seg) {
+			continue
+		}
+
 		c.Log(logger.Debug, "removing %s", seg.Fpath)
-		os.Remove(seg.Fpath)
+		os.Remove(seg.Fpath)                                 //nolint:errcheck
+		os.Remove(seg.Fpath + recorder.MotionMarkerSuffix)   //nolint:errcheck
+		os.Remove(seg.Fpath + recorder.NoMotionMarkerSuffix) //nolint:errcheck
 	}
 
 	return nil
+}
+
+func (c *Cleaner) shouldDeleteSegment(now time.Time, pathConf *conf.Path, seg *recordstore.Segment) bool {
+	if !pathConf.RecordMotion {
+		return pathConf.RecordDeleteAfter != 0 &&
+			!seg.Start.After(now.Add(-time.Duration(pathConf.RecordDeleteAfter)))
+	}
+
+	if _, err := os.Stat(seg.Fpath + recorder.MotionMarkerSuffix); err == nil {
+		return pathConf.RecordMotionDeleteAfter != 0 &&
+			!seg.Start.After(now.Add(-time.Duration(pathConf.RecordMotionDeleteAfter)))
+	}
+
+	if _, err := os.Stat(seg.Fpath + recorder.NoMotionMarkerSuffix); err == nil {
+		return pathConf.RecordDeleteAfter == 0 ||
+			!seg.Start.After(now.Add(-time.Duration(pathConf.RecordDeleteAfter)))
+	}
+
+	return pathConf.RecordDeleteAfter != 0 &&
+		!seg.Start.After(now.Add(-time.Duration(pathConf.RecordDeleteAfter)))
 }
 
 func (c *Cleaner) deleteEmptyDirs(pathConf *conf.Path) {

@@ -720,6 +720,16 @@ components:
           type: string
         recordDeleteAfter:
           type: string
+        recordMotion:
+          type: boolean
+        recordMotionDeleteAfter:
+          type: string
+        recordMotionThreshold:
+          type: integer
+          format: int64
+        recordMotionMinimumPixels:
+          type: integer
+          format: int64
 
         # Authentication (deprecated)
         publishUser:
